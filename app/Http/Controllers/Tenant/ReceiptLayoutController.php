@@ -58,6 +58,7 @@ class ReceiptLayoutController extends Controller
             'show_bill_barcode'      => ['nullable', 'boolean'],
             'show_order_note'        => ['nullable', 'boolean'],
             'show_deal_as_heading'   => ['nullable', 'boolean'],
+            'show_cancel_cross'      => ['nullable', 'boolean'],
             'header_text'            => ['nullable', 'string', 'max:500'],
             'footer_text'            => ['nullable', 'string', 'max:500'],
             'font_size'              => ['required', 'integer', 'min:8', 'max:24'],
@@ -65,6 +66,8 @@ class ReceiptLayoutController extends Controller
             'item_font_size'         => ['nullable', 'integer', 'min:8', 'max:24'],
             'time_font_size'         => ['nullable', 'integer', 'min:8', 'max:24'],
             'customer_font_size'     => ['nullable', 'integer', 'min:8', 'max:24'],
+            'order_type_font_size'   => ['nullable', 'integer', 'min:8', 'max:24'],
+            'table_font_size'        => ['nullable', 'integer', 'min:8', 'max:24'],
             'is_active'              => ['nullable', 'boolean'],
         ]);
 
@@ -84,17 +87,27 @@ class ReceiptLayoutController extends Controller
             $updateData['logo_path'] = $logoPath;
         }
 
-        // RECEIPT-CUSTOMER-SIZE-1 — a blank Customer & Delivery size is written only when it clears a
-        // saved one. Every KOT / Reminder save posts the box blank, so without this each of them would
-        // name the new column — and a save in the deploy's pull → migrate second would fail outright.
+        // RECEIPT-CUSTOMER-SIZE-1 / KOT-CANCEL-CROSS-1 — a blank size box or an unticked newer switch is
+        // written only when it clears a saved value. Every save posts the boxes of the OTHER documents
+        // blank (and the switches unticked), so without this each save would name the newer columns —
+        // and a save in the deploy's pull → migrate second would fail outright. An unset key leaves the
+        // row's value (or the column default) exactly as it is.
         // (Blank arrives as null through the web middleware, as '' when the controller is called directly.)
-        if (array_key_exists('customer_font_size', $updateData) && in_array($updateData['customer_font_size'], [null, ''], true)) {
-            $saved = ReceiptLayoutSetting::where('branch_id', $data['branch_id'])
-                ->where('document_type', $data['document_type'])->first();
-            if ($saved?->customer_font_size === null) {
-                unset($updateData['customer_font_size']);
+        $saved = null;
+        $savedRead = false;
+        foreach (['customer_font_size', 'order_type_font_size', 'table_font_size', 'show_cancel_cross'] as $column) {
+            if (! array_key_exists($column, $updateData) || ! in_array($updateData[$column], [null, '', false], true)) {
+                continue;
+            }
+            if (! $savedRead) {
+                $saved = ReceiptLayoutSetting::where('branch_id', $data['branch_id'])
+                    ->where('document_type', $data['document_type'])->first();
+                $savedRead = true;
+            }
+            if (empty($saved?->{$column})) {
+                unset($updateData[$column]);
             } else {
-                $updateData['customer_font_size'] = null;
+                $updateData[$column] = $column === 'show_cancel_cross' ? false : null;
             }
         }
 
@@ -128,6 +141,13 @@ class ReceiptLayoutController extends Controller
             'customer_font_size'      => $request->has('customer_font_size')
                 ? ($request->filled('customer_font_size') ? (int) $request->input('customer_font_size') : null)
                 : $base->customer_font_size,
+            // KOT-CANCEL-CROSS-1: the KOT's order type and TABLE lines — always sent, blank included, like the box above.
+            'order_type_font_size'    => $request->has('order_type_font_size')
+                ? ($request->filled('order_type_font_size') ? (int) $request->input('order_type_font_size') : null)
+                : $base->order_type_font_size,
+            'table_font_size'         => $request->has('table_font_size')
+                ? ($request->filled('table_font_size') ? (int) $request->input('table_font_size') : null)
+                : $base->table_font_size,
             'logo_path'               => $base->logo_path,
             'header_text'             => $request->input('header_text',  $base->header_text),
             'footer_text'             => $request->input('footer_text',  $base->footer_text),
@@ -216,6 +236,11 @@ class ReceiptLayoutController extends Controller
             'kotLines'       => $salesOrder->lines ?? collect(),
             'lineQuantities' => collect(),
             'isReprint'      => true,
+            // KOT-CANCEL-CROSS-1: the cancel switch only changes a CANCEL ticket, so with it on the KOT preview
+            // shows one — otherwise ticking it would change nothing on screen and the switch would look dead
+            // (the same reason the deal switch borrows a sale with a deal above).
+            'eventType'      => ($base->document_type === 'kot' && ($layout->show_cancel_cross ?? false)) ? 'cancel' : 'normal',
+            'sequenceNo'     => ($base->document_type === 'kot' && ($layout->show_cancel_cross ?? false)) ? 2 : 1,
             // COMBO-KOT-DEAL-NAME-1 / KOT-DEAL-HEADING-1: the deal names, so the preview shows a deal
             // the way the paper does — before, the preview never named a deal at all.
             'comboNames'     => ($ids = collect($salesOrder->lines ?? [])->pluck('combo_id')->filter()->unique()->values())->isEmpty()

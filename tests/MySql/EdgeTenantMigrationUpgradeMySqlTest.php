@@ -628,6 +628,19 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             fn ($conn, $schema) => $this->assertTrue($schema->hasColumn('receipt_layout_settings', 'customer_font_size')));
     }
 
+    /** KOT-CANCEL-CROSS-1 (28 Nov 2026): carried by the appliance, not yet replicated by the bootstrap. */
+    public function test_kot_cancel_cross_and_line_sizes_upgrade_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_28_000001_add_kot_cancel_cross_and_line_sizes', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            fn () => $this->dropColumns('receipt_layout_settings', ['show_cancel_cross', 'order_type_font_size', 'table_font_size']),
+            function ($conn, $schema) {
+                foreach (['show_cancel_cross', 'order_type_font_size', 'table_font_size'] as $column) {
+                    $this->assertTrue($schema->hasColumn('receipt_layout_settings', $column), "{$column} carried");
+                }
+                $this->assertSame('0', (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_cancel_cross'")->d, 'OFF unless a branch switches it on');
+            });
+    }
+
     /** PURCHASE-EDIT-1 (1/3) + SUPPLIER-LEDGER-DAILY-1 (canonical f0019787 / 0d07db90): entry_date + its index, carried. */
     public function test_supplier_ledger_entry_date_upgrades_an_older_appliance(): void
     {

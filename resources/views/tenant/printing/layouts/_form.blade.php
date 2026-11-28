@@ -40,6 +40,19 @@
     <div class="form-text">Customer, Phone and Deliver to lines on the bill. Leave blank to keep them as they print today. {!! $scaleHelp !!}</div>
     <div class="form-text">Bill par Customer, Phone aur Deliver to ki lines. Khali chhorein to abhi jaisa. 17 = lamba, 19 = lamba + chaura.</div>
 </div>
+{{-- KOT-CANCEL-CROSS-1: the KOT's order type line and TABLE line (KOT only). --}}
+<div class="col-md-6" data-layout-doc="kot">
+    <label class="form-label" for="order_type_font_size">Order Type Font (px)</label>
+    <input id="order_type_font_size" type="number" name="order_type_font_size" value="{{ old('order_type_font_size', $l?->order_type_font_size) }}" class="form-control" min="8" max="24" placeholder="Same as KOT font">
+    <div class="form-text">The DINE IN / TAKEAWAY / DELIVERY / QUICK SALE line. Leave blank to match the KOT font. {!! $scaleHelp !!}</div>
+    <div class="form-text">Order type ki line. Khali chhorein to KOT font jaisi. 19 = lamba + chaura.</div>
+</div>
+<div class="col-md-6" data-layout-doc="kot">
+    <label class="form-label" for="table_font_size">Table Font (px)</label>
+    <input id="table_font_size" type="number" name="table_font_size" value="{{ old('table_font_size', $l?->table_font_size) }}" class="form-control" min="8" max="24" placeholder="Same as KOT font">
+    <div class="form-text">The TABLE line on a dine-in ticket. Leave blank to match the KOT font. {!! $scaleHelp !!}</div>
+    <div class="form-text">TABLE ki line. Khali chhorein to KOT font jaisi. 19 = lamba + chaura.</div>
+</div>
 <div class="col-12">
     <div class="alert alert-info py-2 mb-0 small">
         Bigger text means fewer characters per line — the printer does not wrap for you, so we wrap
@@ -89,11 +102,12 @@
             'show_bill_barcode'      => 'Bill number as a big barcode (scan it at the billing counter)',
             'show_order_note'        => 'Order Note',
             'show_deal_as_heading'   => 'Deal name on top, its items under it',
+            'show_cancel_cross'      => 'Cancel KOT: big XX CANCEL KOT XX heading (preview shows a cancel ticket)',
         ] as $field => $label)
         @php
             // Most toggles default ON for a brand-new layout; dividers are the exception (today's
             // tickets have none), so they default OFF until an operator turns them on.
-            $switchDefault = in_array($field, ['show_column_dividers', 'show_bill_barcode', 'show_order_note', 'show_deal_as_heading'], true) ? false : true;
+            $switchDefault = in_array($field, ['show_column_dividers', 'show_bill_barcode', 'show_order_note', 'show_deal_as_heading', 'show_cancel_cross'], true) ? false : true;
         @endphp
         <div class="col-md-4 layout-option" data-layout-field="{{ $field }}">
             <div class="form-check form-switch">

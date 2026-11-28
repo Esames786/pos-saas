@@ -1140,6 +1140,10 @@ class EscPosPayloadService
         // heading. NULL falls back to the KOT font, so nothing changes until a value is set.
         $rowBig   = $this->scaleFor($layout?->item_font_size ?? $layout?->kot_font_size);
         $timeBig  = $this->scaleFor($layout?->time_font_size ?? $layout?->kot_font_size);
+        // KOT-CANCEL-CROSS-1: the order type line and the TABLE line carry their own size too (Khatri's owner,
+        // 28 Nov: "order type thora bara, table bhi"). NULL = the KOT font, so no ticket changes until set.
+        $typeBig  = $this->scaleFor($layout?->order_type_font_size ?? $layout?->kot_font_size);
+        $tableBig = $this->scaleFor($layout?->table_font_size ?? $layout?->kot_font_size);
         $dividers = $show('show_column_dividers', false);
         // Divider prints at NORMAL width (scaled() resets size), so it must span the FULL paper — 42
         // dashes on 80mm. Dividing by the KOT font width made it only ~21 at a big font, ending the
@@ -1177,14 +1181,25 @@ class EscPosPayloadService
             default => 'KOT #' . ($sequenceNo ?: 1),
         };
         $heading = $stars ? '*** ' . $kotLabel . ' ***' : $kotLabel;
+        $headingScale = $big;
+        // KOT-CANCEL-CROSS-1 — a cancel ticket used to differ from the order's own ticket by the one word
+        // CANCEL, at the same size as every other big line, and its item rows are identical. In a rush the
+        // kitchen cooks it again. With the KOT layout switch on, the cancel heading is crossed on both
+        // sides and at least double size (21 characters a line: "XX CANCEL KOT #99 XX" is 20). The crosses
+        // replace the stars on a cancel ticket. Read null-safe for the same reason as the stars above: a
+        // row from before the migration has no such attribute and must print today's ticket.
+        if ($eventType === 'cancel' && $layout !== null && (bool) ($layout->show_cancel_cross ?? false)) {
+            $heading = 'XX ' . $kotLabel . ' XX';
+            $headingScale = ['w' => max($big['w'], 2), 'h' => max($big['h'], 2)];
+        }
         // The heading (KOT / CANCEL KOT / ADDITION KOT) reads at the same big scale as the order
         // type and category below it — a cancel ticket the kitchen can read across the pass.
-        $out .= $this->scaled($heading, $big, true, true);
+        $out .= $this->scaled($heading, $headingScale, true, true);
         if ($eventType === 'duplicate') {
             $out .= $this->center('DUPLICATE ' . max($copyNo, 1)) . "\n";
         }
         $orderTypeLabel = strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE'));
-        $out .= $this->scaled($stars ? '** ' . $orderTypeLabel . ' **' : $orderTypeLabel, $big, true, true);
+        $out .= $this->scaled($stars ? '** ' . $orderTypeLabel . ' **' : $orderTypeLabel, $typeBig, true, true);
         // One ticket per category — name the category so the station knows the slip is theirs.
         // The show_category_header toggle (default ON) lets a single-station kitchen drop this line.
         if ($show('show_category_header', true) && ! empty($payload['kot_category'])) {
@@ -1209,7 +1224,7 @@ class EscPosPayloadService
 
         if ($show('show_table_info')) {
             if ($sale->restaurantTable) {
-                $out .= $this->scaled('TABLE: ' . $sale->restaurantTable->table_no, $big, true);
+                $out .= $this->scaled('TABLE: ' . $sale->restaurantTable->table_no, $tableBig, true);
             }
             if ($sale->restaurantWaiter) {
                 $out .= $this->scaled('WAITER: ' . strtoupper($sale->restaurantWaiter->name), $big, true);
